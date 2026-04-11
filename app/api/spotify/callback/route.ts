@@ -5,6 +5,10 @@ import { exchangeCodeForTokens } from "@/lib/spotify";
 
 export const runtime = "nodejs";
 
+function isProductionHost() {
+  return process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+}
+
 async function saveRefreshTokenToEnv(refreshToken: string) {
   const envPath = path.join(process.cwd(), ".env.local");
 
@@ -61,6 +65,17 @@ export async function GET(request: NextRequest) {
         new URL(`/auth?saved=1`, request.url),
       );
     } catch (saveError: any) {
+      if (isProductionHost()) {
+        return NextResponse.redirect(
+          new URL(
+            `/auth?warning=${encodeURIComponent(
+              "Refresh token received. Add it to SPOTIFY_REFRESH_TOKEN in your host environment variables.",
+            )}`,
+            request.url,
+          ),
+        );
+      }
+
       return NextResponse.redirect(
         new URL(
           `/auth?refresh_token=${encodeURIComponent(refreshToken)}&warning=${encodeURIComponent(
