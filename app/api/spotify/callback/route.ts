@@ -78,8 +78,8 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.redirect(
         new URL(
-          `/auth?refresh_token=${encodeURIComponent(refreshToken)}&warning=${encodeURIComponent(
-            saveError?.message ?? "Could not auto-save token",
+          `/auth?warning=${encodeURIComponent(
+            saveError?.message ?? "Could not auto-save token. Check .env.local permissions, then connect again.",
           )}`,
           request.url,
         ),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import useSWR from "swr";
 import Image from "next/image";
 import { clamp, formatTime } from "@/lib/utils";
@@ -48,6 +48,10 @@ type LyricsResponse = {
   lines: LyricLine[];
   source: string;
   error: string | null;
+};
+
+type SpotifyPlayerReadyEvent = {
+  device_id: string;
 };
 
 type MoodPalette = {
@@ -122,13 +126,18 @@ function Equalizer({ active }: { active: boolean }) {
 }
 
 export default function NowPlayingCard() {
-  const { data, error, isLoading } = useSWR<NowPlayingResponse>(
+  const { data, error, isLoading, mutate: refreshNowPlaying } = useSWR<NowPlayingResponse>(
     "/api/spotify/now-playing",
     fetcher,
     {
-      refreshInterval: 2000,
+      refreshInterval: (latestData) => {
+        if (!latestData) return 5_000;
+        return latestData.isPlaying ? 1_000 : 10_000;
+      },
       revalidateOnFocus: true,
-      dedupingInterval: 1000,
+      revalidateOnReconnect: true,
+      dedupingInterval: 1_500,
+      errorRetryInterval: 10_000,
     }
   );
 
@@ -154,32 +163,53 @@ export default function NowPlayingCard() {
     });
 
   const [liveProgressMs, setLiveProgressMs] = useState(0);
+  const [progressAnchor, setProgressAnchor] = useState<{
+    progressMs: number;
+    receivedAt: number;
+  } | null>(null);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [playbackDeviceId, setPlaybackDeviceId] = useState<string | null>(null);
+  const [playbackStatus, setPlaybackStatus] = useState("Browser player loading");
   const [moodPalette, setMoodPalette] = useState<MoodPalette>(() =>
     makeFallbackPalette("spotify")
   );
 
   const hasTrack = Boolean(data?.title);
+  const isIdle = Boolean(data && !data.isPlaying);
   const backgroundImageUrl = data?.albumImageUrl ?? data?.artistImageUrl ?? null;
   const paletteSeed = `${data?.title ?? ""}${data?.artist ?? ""}`;
 
   useEffect(() => {
     if (!data) return;
     setLiveProgressMs(data.progressMs);
+    setProgressAnchor({
+      progressMs: data.progressMs,
+      receivedAt: performance.now(),
+    });
   }, [data?.progressMs, data?.title, data?.isPlaying, data]);
 
   useEffect(() => {
-    if (!data?.isPlaying) return;
+    if (!data?.isPlaying || !progressAnchor) return;
 
-    const interval = setInterval(() => {
-      setLiveProgressMs((prev) =>
-        clamp(prev + 1000, 0, data.durationMs || prev + 1000)
+    let timerId = 0;
+
+    const tick = () => {
+      setLiveProgressMs(
+        clamp(
+          progressAnchor.progressMs + (performance.now() - progressAnchor.receivedAt),
+          0,
+          data.durationMs || progressAnchor.progressMs,
+        ),
       );
-    }, 1000);
+      timerId = window.setTimeout(tick, 250);
+    };
 
-    return () => clearInterval(interval);
-  }, [data?.isPlaying, data?.durationMs, data?.title]);
+    tick();
+
+    return () => window.clearTimeout(timerId);
+  }, [data?.isPlaying, data?.durationMs, data?.title, progressAnchor]);
 
   useEffect(() => {
     const fallback = makeFallbackPalette(paletteSeed || "spotify");
@@ -240,6 +270,117 @@ export default function NowPlayingCard() {
     };
   }, [backgroundImageUrl, paletteSeed]);
 
+  useEffect(() => {
+    let mounted = true;
+    let player: any = null;
+
+    const setupPlayer = () => {
+      const Spotify = (window as any).Spotify;
+      if (!Spotify || (window as any).__votelessSpotifyPlayerReady) return;
+
+      (window as any).__votelessSpotifyPlayerReady = true;
+      player = new Spotify.Player({
+        name: "voteless.xyz player",
+        getOAuthToken: async (callback: (token: string) => void) => {
+          const response = await fetch("/api/spotify/access-token", {
+            cache: "no-store",
+          });
+          const data = await response.json();
+          if (response.status === 403) {
+            setPlaybackStatus("Browser playback is local only");
+            return;
+          }
+
+          if (data?.accessToken) {
+            callback(data.accessToken);
+          }
+        },
+        volume: 0.7,
+      });
+
+      player.addListener("ready", ({ device_id }: SpotifyPlayerReadyEvent) => {
+        if (!mounted) return;
+        setPlaybackDeviceId(device_id);
+        setPlaybackStatus("Browser player ready");
+      });
+
+      player.addListener("not_ready", () => {
+        if (!mounted) return;
+        setPlaybackDeviceId(null);
+        setPlaybackStatus("Browser player disconnected");
+      });
+
+      player.addListener("authentication_error", () => {
+        if (!mounted) return;
+        setPlaybackStatus("Reconnect Spotify for browser playback");
+      });
+
+      player.addListener("account_error", () => {
+        if (!mounted) return;
+        setPlaybackStatus("Spotify Premium is needed for web playback");
+      });
+
+      player.connect();
+    };
+
+    if ((window as any).Spotify) {
+      setupPlayer();
+    } else {
+      (window as any).onSpotifyWebPlaybackSDKReady = setupPlayer;
+      if (!document.querySelector('script[src="https://sdk.scdn.co/spotify-player.js"]')) {
+        const script = document.createElement("script");
+        script.src = "https://sdk.scdn.co/spotify-player.js";
+        script.async = true;
+        document.body.appendChild(script);
+      }
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function playInBrowser() {
+    if (!playbackDeviceId) {
+      setPlaybackStatus("Browser player is still loading");
+      return;
+    }
+
+    setPlaybackStatus("Moving playback here");
+    const response = await fetch("/api/spotify/transfer-playback", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ deviceId: playbackDeviceId }),
+    });
+
+    if (!response.ok) {
+      setPlaybackStatus(
+        response.status === 403
+          ? "Browser playback is local only"
+          : "Reconnect Spotify, then try again",
+      );
+      return;
+    }
+
+    setPlaybackStatus("Playing in this tab");
+  }
+
+  async function refreshPlayback() {
+    setPlaybackStatus("Syncing Spotify");
+    await refreshNowPlaying();
+    setProgressAnchor((anchor) =>
+      anchor
+        ? {
+            ...anchor,
+            receivedAt: performance.now(),
+          }
+        : anchor,
+    );
+    setPlaybackStatus(playbackDeviceId ? "Browser player ready" : "Browser player loading");
+  }
+
   const progressPercent = useMemo(() => {
     if (!data?.durationMs) return 0;
     return clamp((liveProgressMs / data.durationMs) * 100, 0, 100);
@@ -254,7 +395,7 @@ export default function NowPlayingCard() {
     let activeIndex = 0;
     for (let index = 0; index < lines.length; index += 1) {
       const startTimeMs = lines[index].startTimeMs;
-      if (typeof startTimeMs === "number" && startTimeMs <= liveProgressMs + 250) {
+      if (typeof startTimeMs === "number" && startTimeMs <= liveProgressMs + 650) {
         activeIndex = index;
       }
     }
@@ -267,8 +408,8 @@ export default function NowPlayingCard() {
       return [];
     }
 
-    const start = Math.max(0, activeLyricIndex - 1);
-    return lines.slice(start, start + 5).map((line, offset) => ({
+    const start = Math.max(0, activeLyricIndex - 2);
+    return lines.slice(start, start + 6).map((line, offset) => ({
       ...line,
       index: start + offset,
     }));
@@ -355,8 +496,8 @@ export default function NowPlayingCard() {
                   type="button"
                   onClick={() => setSettingsOpen((open) => !open)}
                   aria-expanded={settingsOpen}
-                  aria-label="Open history"
-                  title="History"
+                  aria-label="Open settings"
+                  title="Settings"
                 >
                   &#9881;
                 </button>
@@ -368,13 +509,30 @@ export default function NowPlayingCard() {
 
             {!hasTrack ? (
               <div className="empty-state">
-                <div className="empty-disc" />
-                <h2>No music yet</h2>
-                <p>Start playing something on Spotify and this page will update automatically.</p>
+                <div className="idle-orbit">
+                  <div className="idle-disc" />
+                  <span className="idle-ring idle-ring-1" />
+                  <span className="idle-ring idle-ring-2" />
+                </div>
+                <p className="eyebrow">Idle mode</p>
+                <h2>Waiting for Spotify</h2>
+                <p>Start a track and the room will light up with the cover, lyrics, and history.</p>
+                <a className="idle-link" href="/api/spotify/login">
+                  Connect Spotify
+                </a>
               </div>
             ) : (
               <>
-                <div className="art-wrap">
+                {isIdle ? (
+                  <div className="idle-banner">
+                    <span className="idle-dot" />
+                    <span>
+                      Idle mode {data.playedAt ? ` / last played ${timeAgo(data.playedAt)}` : ""}
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className={isIdle ? "art-wrap idle-art" : "art-wrap"}>
                   <div className={`vinyl ${data.isPlaying ? "spinning" : ""}`} />
                   <div className="album-ring">
                     {data.albumImageUrl ? (
@@ -405,33 +563,42 @@ export default function NowPlayingCard() {
                   </div>
 
                   <div className="progress-times">
-                    <span>{formatTime(data.isPlaying ? liveProgressMs : 0)}</span>
+                    <span>{formatTime(data.isFallback ? 0 : liveProgressMs)}</span>
                     <span>{formatTime(data.durationMs)}</span>
                   </div>
                 </div>
 
                 <div className="player-actions">
-                  <button className="icon-btn" type="button" aria-label="Shuffle">
+                  <button
+                    className="icon-btn tooltip-btn"
+                    type="button"
+                    aria-label="Refresh Spotify"
+                    data-tooltip="Syncing page"
+                    onClick={refreshPlayback}
+                  >
                     &#8635;
                   </button>
 
-                  <a
-                    className="play-btn"
-                    href={data.songUrl ?? "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Open in Spotify"
+                  <button
+                    className="play-btn tooltip-btn"
+                    type="button"
+                    onClick={playInBrowser}
+                    aria-label="Play in browser"
+                    data-tooltip="Play"
+                    disabled={!playbackDeviceId}
                   >
                     &#9654;
-                  </a>
+                  </button>
 
                   <button
-                    className="icon-btn"
+                    className="icon-btn tooltip-btn"
                     type="button"
-                    aria-label="Show lyrics"
-                    onClick={() => setLyricsOpen(true)}
+                    aria-label="Show history"
+                    data-tooltip="History"
+                    onClick={() => setHistoryOpen((open) => !open)}
+                    aria-expanded={historyOpen}
                   >
-                    Ly
+                    &#128214;
                   </button>
                 </div>
 
@@ -442,6 +609,10 @@ export default function NowPlayingCard() {
 
                   <div className="footer-pill">
                     {data.isFallback ? "Fallback mode" : "Live sync"}
+                  </div>
+
+                  <div className="footer-pill">
+                    {playbackStatus}
                   </div>
                 </div>
 
@@ -482,8 +653,27 @@ export default function NowPlayingCard() {
           </div>
 
           <div className="settings-block">
-            <h3>Listening history</h3>
-            <span>Last {data.recentTracks.length || 0}</span>
+            <h3>Coming soon</h3>
+            <span>Reserved</span>
+          </div>
+
+          <p className="settings-note">This cog is ready for more controls later.</p>
+        </section>
+
+        <section
+          className={historyOpen ? "history-drawer history-open" : "history-drawer"}
+          aria-hidden={!historyOpen}
+        >
+          <div className="section-head">
+            <p className="eyebrow">History</p>
+            <button className="close-btn compact" type="button" onClick={() => setHistoryOpen(false)}>
+              Close
+            </button>
+          </div>
+
+          <div className="settings-block">
+            <h3>Last 10 songs</h3>
+            <span>{data.recentTracks.length || 0}</span>
           </div>
 
           {data.recentTracks.length ? (
@@ -529,29 +719,40 @@ export default function NowPlayingCard() {
 
           <div className="lyrics-lines">
             {lyricsLoading ? (
-              <p className="lyric-line is-current">Finding synced lyrics...</p>
+              <div className="lyrics-state">
+                <div className="lyrics-pulse" />
+                <p className="lyric-line is-current">Finding synced lyrics...</p>
+                <p className="lyric-line">Asking LRCLIB for a timed match.</p>
+              </div>
             ) : lyricsError || lyricsData?.error ? (
-              <>
+              <div className="lyrics-state">
+                <div className="lyrics-pulse muted" />
                 <p className="lyric-line is-current">No synced lyrics found</p>
                 <p className="lyric-line">LRCLIB did not have a match for this track.</p>
                 <p className="lyric-line">Try another song and this panel will check again.</p>
-              </>
+              </div>
             ) : lyricsData?.instrumental ? (
-              <p className="lyric-line is-current">Instrumental track</p>
+              <div className="lyrics-state">
+                <div className="lyrics-pulse" />
+                <p className="lyric-line is-current">Instrumental track</p>
+                <p className="lyric-line">No words needed for this one.</p>
+              </div>
             ) : visibleLyrics.length ? (
               visibleLyrics.map((line) => (
                 <p
                   className={line.index === activeLyricIndex ? "lyric-line is-current" : "lyric-line"}
                   key={`${line.startTimeMs ?? line.index}-${line.text}`}
+                  style={{ "--lyric-offset": line.index - activeLyricIndex } as CSSProperties}
                 >
                   {line.text}
                 </p>
               ))
             ) : (
-              <>
+              <div className="lyrics-state">
+                <div className="lyrics-pulse muted" />
                 <p className="lyric-line is-current">No lyrics found</p>
                 <p className="lyric-line">LRCLIB did not have a match for this track.</p>
-              </>
+              </div>
             )}
           </div>
         </div>

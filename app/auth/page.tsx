@@ -1,6 +1,5 @@
 type AuthPageProps = {
   searchParams: Promise<{
-    refresh_token?: string;
     error?: string;
     saved?: string;
     warning?: string;
@@ -9,7 +8,6 @@ type AuthPageProps = {
 
 export default async function AuthPage({ searchParams }: AuthPageProps) {
   const params = await searchParams;
-  const refreshToken = params.refresh_token;
   const error = params.error;
   const saved = params.saved === "1";
   const warning = params.warning;
@@ -31,22 +29,6 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
               Your refresh token was saved to <code>.env.local</code>. Restart your dev server so Next.js reloads the env file.
             </p>
           </div>
-        ) : refreshToken ? (
-          <>
-            <div className="mt-6 rounded-2xl border border-yellow-400/20 bg-yellow-500/10 p-4 text-yellow-100">
-              <p className="font-medium">Token received</p>
-              <p className="mt-2 text-sm">
-                Auto-save could not complete here, so copy this refresh token into <code>SPOTIFY_REFRESH_TOKEN</code> in your env file.
-              </p>
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 p-4">
-              <p className="mb-2 text-sm text-white/60">Refresh token</p>
-              <pre className="overflow-x-auto whitespace-pre-wrap break-all text-sm text-white">
-                {refreshToken}
-              </pre>
-            </div>
-          </>
         ) : (
           <p className="mt-6 text-white/70">No auth result found.</p>
         )}

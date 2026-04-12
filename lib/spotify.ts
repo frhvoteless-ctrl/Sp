@@ -1,6 +1,6 @@
 const SPOTIFY_TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
 const SPOTIFY_NOW_PLAYING_ENDPOINT = "https://api.spotify.com/v1/me/player/currently-playing";
-const SPOTIFY_RECENTLY_PLAYED_ENDPOINT = "https://api.spotify.com/v1/me/player/recently-played?limit=5";
+const SPOTIFY_RECENTLY_PLAYED_ENDPOINT = "https://api.spotify.com/v1/me/player/recently-played?limit=10";
 const SPOTIFY_ARTIST_ENDPOINT = "https://api.spotify.com/v1/artists";
 const SPOTIFY_AUTHORIZE_ENDPOINT = "https://accounts.spotify.com/authorize";
 
@@ -64,7 +64,15 @@ export function getSpotifyLoginUrl(): string {
     client_id: clientId,
     response_type: "code",
     redirect_uri: redirectUri,
-    scope: "user-read-currently-playing user-read-recently-played",
+    scope: [
+      "streaming",
+      "user-read-email",
+      "user-read-private",
+      "user-read-currently-playing",
+      "user-read-recently-played",
+      "user-read-playback-state",
+      "user-modify-playback-state",
+    ].join(" "),
     show_dialog: "true",
   });
 
@@ -226,14 +234,14 @@ export async function getNowPlayingOrLastPlayed(): Promise<NowPlayingData> {
     const data = await nowPlayingResponse.json();
     const item = data?.item;
 
-    if (item?.type === "track" && data?.is_playing) {
+    if (item?.type === "track") {
       const artistSpotlight = await getArtistSpotlight(accessToken, getPrimaryArtistId(item));
 
       return mapTrackToData(
         { ...item, progress_ms: data?.progress_ms ?? 0 },
-        true,
+        Boolean(data?.is_playing),
         false,
-        null,
+        data?.is_playing ? null : new Date().toISOString(),
         artistSpotlight,
         recentTracks,
       );
