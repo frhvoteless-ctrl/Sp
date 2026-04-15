@@ -1924,6 +1924,196 @@ body {
   background: rgba(255, 255, 255, 0.12);
 }
 
+.idle-signal-room {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  min-height: min(620px, calc(100dvh - 120px));
+  padding: 28px 14px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.idle-signal-room::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  z-index: -1;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(255, 255, 255, 0.09), transparent 30%),
+    radial-gradient(circle at 20% 70%, var(--mood-two), transparent 38%),
+    radial-gradient(circle at 90% 14%, var(--mood-three), transparent 34%);
+  filter: blur(18px);
+  opacity: 0.72;
+}
+
+.idle-signal-lens {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(250px, 62vw);
+  aspect-ratio: 1;
+  margin-bottom: 24px;
+  border-radius: 50%;
+}
+
+.idle-signal-lens::before,
+.idle-signal-lens::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.idle-signal-lens::before {
+  inset: 22%;
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.88) 0 5px, rgba(255, 255, 255, 0.18) 6px 14px, transparent 15px),
+    radial-gradient(circle, var(--mood-one), transparent 68%);
+  box-shadow:
+    0 0 42px rgba(255, 255, 255, 0.16),
+    0 0 88px var(--mood-one);
+  animation: idle-signal-core 3.6s ease-in-out infinite;
+}
+
+.idle-signal-lens::after {
+  inset: 8%;
+  background:
+    linear-gradient(90deg, transparent 0 48%, rgba(255, 255, 255, 0.13) 49% 51%, transparent 52% 100%),
+    linear-gradient(0deg, transparent 0 48%, rgba(255, 255, 255, 0.08) 49% 51%, transparent 52% 100%);
+  opacity: 0.32;
+  animation: idle-signal-breathe 5s ease-in-out infinite;
+}
+
+.idle-signal-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 0 38px rgba(255, 255, 255, 0.06),
+    inset 0 0 34px rgba(255, 255, 255, 0.035);
+}
+
+.idle-signal-ring-one {
+  inset: 4%;
+  background:
+    conic-gradient(from 30deg, transparent 0 12%, rgba(255, 255, 255, 0.34) 13% 15%, transparent 16% 42%, var(--mood-two) 44% 47%, transparent 48% 100%);
+  mask-image: radial-gradient(circle, transparent 0 70%, #000 71% 74%, transparent 75%);
+  animation: signal-spin 11s linear infinite;
+}
+
+.idle-signal-ring-two {
+  inset: 20%;
+  border-style: dashed;
+  opacity: 0.55;
+  animation: signal-spin 16s linear infinite reverse;
+}
+
+.idle-signal-core {
+  width: 23%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.84) 0 13%, rgba(255, 255, 255, 0.12) 14% 42%, transparent 43%),
+    radial-gradient(circle, var(--mood-one), transparent 72%);
+  opacity: 0.84;
+  box-shadow: 0 0 52px var(--mood-one);
+}
+
+.idle-signal-line {
+  position: absolute;
+  left: 24%;
+  right: 24%;
+  bottom: 28%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.66), transparent);
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.22);
+  animation: idle-signal-line 3.8s ease-in-out infinite;
+}
+
+.idle-signal-copy h1 {
+  margin: 0;
+  font-size: clamp(2.1rem, 8vw, 3.9rem);
+  line-height: 0.95;
+  font-weight: 900;
+  text-wrap: balance;
+}
+
+.idle-signal-copy p:not(.eyebrow) {
+  max-width: 310px;
+  margin: 16px auto 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.idle-signal-chips,
+.idle-signal-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.idle-signal-chips {
+  margin-top: 22px;
+}
+
+.idle-signal-chips span {
+  min-height: 34px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+}
+
+.idle-signal-actions {
+  margin-top: 18px;
+}
+
+.idle-signal-actions .idle-link {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  font: inherit;
+}
+
+@keyframes idle-signal-core {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.92;
+  }
+}
+
+@keyframes idle-signal-breathe {
+  0%, 100% {
+    transform: scale(0.92);
+    opacity: 0.2;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 0.44;
+  }
+}
+
+@keyframes idle-signal-line {
+  0%, 100% {
+    transform: translateY(0) scaleX(0.58);
+    opacity: 0.32;
+  }
+  50% {
+    transform: translateY(-18px) scaleX(1);
+    opacity: 0.82;
+  }
+}
+
 .lyrics-lines {
   position: relative;
   align-content: start;
@@ -2014,5 +2204,293 @@ body {
   .idle-disc {
     width: 96px;
     height: 96px;
+  }
+}
+
+/* Signal chamber loader */
+.signal-snow {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100dvh;
+  pointer-events: none;
+  opacity: 0.94;
+  mix-blend-mode: screen;
+}
+
+.player-column,
+.lyrics-panel,
+.signal-loader {
+  position: relative;
+  z-index: 2;
+}
+
+.loading-stage {
+  width: min(100%, 720px);
+  max-width: 720px;
+  min-height: min(680px, calc(100dvh - 36px));
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.loading-stage::before {
+  inset: -100px -120px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.16), transparent 22%),
+    radial-gradient(circle at 48% 52%, var(--mood-one), transparent 42%),
+    radial-gradient(circle at 18% 82%, var(--mood-two), transparent 32%),
+    radial-gradient(circle at 88% 18%, var(--mood-three), transparent 34%);
+  filter: blur(46px);
+  opacity: 0.95;
+}
+
+.loading-stage .stage-bg-fallback {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.07), transparent 28%),
+    linear-gradient(180deg, #020202, #060606 56%, #010101);
+}
+
+.signal-loader {
+  display: grid;
+  justify-items: center;
+  gap: 28px;
+  width: min(100%, 520px);
+  padding: 38px 26px;
+  text-align: center;
+}
+
+.signal-loader::before {
+  content: "";
+  position: absolute;
+  inset: 12px 0;
+  z-index: -1;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(18, 18, 18, 0.55), rgba(5, 5, 5, 0.28)),
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.08), transparent 44%);
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.58),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.signal-lens {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(210px, 44vw, 310px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+.signal-lens::before,
+.signal-lens::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.signal-lens::before {
+  inset: 16%;
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.92) 0 4px, rgba(255, 255, 255, 0.12) 5px 12px, transparent 13px),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.12), transparent 62%);
+  box-shadow:
+    0 0 34px rgba(255, 255, 255, 0.18),
+    0 0 90px var(--mood-one);
+}
+
+.signal-lens::after {
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent 0 48%, rgba(255, 255, 255, 0.14) 49% 51%, transparent 52% 100%),
+    linear-gradient(0deg, transparent 0 48%, rgba(255, 255, 255, 0.1) 49% 51%, transparent 52% 100%);
+  opacity: 0.36;
+  transform: scale(0.92);
+  animation: signal-crosshair 4.8s ease-in-out infinite;
+}
+
+.signal-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 28px rgba(255, 255, 255, 0.08),
+    inset 0 0 28px rgba(255, 255, 255, 0.04);
+}
+
+.signal-ring-one {
+  inset: 4%;
+  background:
+    conic-gradient(from 12deg, transparent 0 18%, rgba(255, 255, 255, 0.72) 19% 21%, transparent 22% 42%, var(--mood-one) 43% 46%, transparent 47% 100%);
+  mask-image: radial-gradient(circle, transparent 0 68%, #000 69% 72%, transparent 73%);
+  animation: signal-spin 3.9s linear infinite;
+}
+
+.signal-ring-two {
+  inset: 18%;
+  border-style: dashed;
+  opacity: 0.65;
+  animation: signal-spin 6.4s linear infinite reverse;
+}
+
+.signal-ring-three {
+  inset: 31%;
+  background:
+    conic-gradient(from 180deg, rgba(255, 255, 255, 0.42), transparent 16%, var(--mood-two), transparent 54%, rgba(255, 255, 255, 0.32), transparent 100%);
+  mask-image: radial-gradient(circle, transparent 0 62%, #000 64% 72%, transparent 74%);
+  animation: signal-pulse-ring 2.2s ease-in-out infinite;
+}
+
+.signal-core {
+  position: relative;
+  width: 22%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.95) 0 12%, rgba(255, 255, 255, 0.22) 13% 34%, transparent 35%),
+    radial-gradient(circle, var(--mood-one), transparent 72%);
+  box-shadow:
+    0 0 30px rgba(255, 255, 255, 0.3),
+    0 0 80px var(--mood-one);
+  animation: signal-core 1.8s ease-in-out infinite;
+}
+
+.signal-sweep {
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.45);
+  animation: signal-sweep 2.4s cubic-bezier(0.2, 0.9, 0.2, 1) infinite;
+}
+
+.signal-copy h1 {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 4.4rem);
+  line-height: 0.92;
+  font-weight: 900;
+  text-wrap: balance;
+}
+
+.signal-status {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.signal-status span {
+  min-height: 34px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+  transition:
+    color 0.28s ease,
+    background 0.28s ease,
+    border-color 0.28s ease,
+    transform 0.28s ease,
+    box-shadow 0.28s ease;
+}
+
+.signal-status span.is-active {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.22);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.05)),
+    linear-gradient(90deg, var(--mood-one), transparent 78%);
+  box-shadow: 0 0 24px var(--mood-one);
+  transform: translateY(-2px);
+}
+
+@keyframes signal-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes signal-core {
+  0%, 100% {
+    transform: scale(0.86);
+    opacity: 0.68;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+@keyframes signal-sweep {
+  0%, 100% {
+    transform: translateY(-82px);
+    opacity: 0;
+  }
+  18%, 76% {
+    opacity: 0.88;
+  }
+  50% {
+    transform: translateY(82px);
+  }
+}
+
+@keyframes signal-crosshair {
+  0%, 100% {
+    transform: rotate(0deg) scale(0.9);
+    opacity: 0.24;
+  }
+  50% {
+    transform: rotate(7deg) scale(1);
+    opacity: 0.48;
+  }
+}
+
+@keyframes signal-pulse-ring {
+  0%, 100% {
+    transform: scale(0.96);
+    opacity: 0.42;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 0.86;
+  }
+}
+
+@media (max-width: 520px) {
+  .loading-stage {
+    min-height: calc(100dvh - 24px);
+  }
+
+  .signal-loader {
+    gap: 22px;
+    padding: 28px 16px;
+  }
+
+  .signal-loader::before {
+    inset: 8px 0;
+    border-radius: 22px;
+  }
+
+  .signal-status {
+    gap: 7px;
+  }
+
+  .signal-status span {
+    padding: 8px 10px;
+    font-size: 11px;
   }
 }

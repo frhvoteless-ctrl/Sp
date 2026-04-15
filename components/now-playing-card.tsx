@@ -60,6 +60,18 @@ type MoodPalette = {
   three: string;
 };
 
+type SignalParticle = {
+  x: number;
+  y: number;
+  baseX: number;
+  baseY: number;
+  vx: number;
+  vy: number;
+  size: number;
+  alpha: number;
+  drift: number;
+};
+
 const fetcher = async (url: string): Promise<NowPlayingResponse> => {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
@@ -121,6 +133,212 @@ function Equalizer({ active }: { active: boolean }) {
       <span className={active ? "bar active" : "bar"} />
       <span className={active ? "bar active" : "bar"} />
       <span className={active ? "bar active" : "bar"} />
+    </div>
+  );
+}
+
+function SignalSnow() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    let frameId = 0;
+    let width = 0;
+    let height = 0;
+    let particles: SignalParticle[] = [];
+    const pointer = { x: -9999, y: -9999, active: false };
+
+    const makeParticles = () => {
+      const count = Math.min(240, Math.max(120, Math.floor((width * height) / 5600)));
+      particles = Array.from({ length: count }, () => {
+        const x = Math.random() * width;
+        const y = Math.random() * height;
+        return {
+          x,
+          y,
+          baseX: x,
+          baseY: y,
+          vx: 0,
+          vy: 0,
+          size: Math.random() * 2.1 + 0.65,
+          alpha: Math.random() * 0.38 + 0.22,
+          drift: Math.random() * 0.9 + 0.15,
+        };
+      });
+    };
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      width = Math.max(1, rect.width);
+      height = Math.max(1, rect.height);
+      canvas.width = Math.floor(width * ratio);
+      canvas.height = Math.floor(height * ratio);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      makeParticles();
+    };
+
+    const movePointer = (event: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = event.clientX - rect.left;
+      pointer.y = event.clientY - rect.top;
+      pointer.active =
+        pointer.x >= 0 &&
+        pointer.y >= 0 &&
+        pointer.x <= rect.width &&
+        pointer.y <= rect.height;
+    };
+
+    const leavePointer = () => {
+      pointer.active = false;
+      pointer.x = -9999;
+      pointer.y = -9999;
+    };
+
+    const draw = (time: number) => {
+      context.clearRect(0, 0, width, height);
+
+      for (const particle of particles) {
+        const dx = particle.x - pointer.x;
+        const dy = particle.y - pointer.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const radius = 145;
+
+        if (pointer.active && distance < radius) {
+          const force = (1 - distance / radius) * 3.2;
+          particle.vx += (dx / distance) * force;
+          particle.vy += (dy / distance) * force;
+        }
+
+        const driftX = Math.sin(time * 0.00045 + particle.baseY * 0.03) * particle.drift;
+        const driftY = Math.cos(time * 0.00038 + particle.baseX * 0.02) * particle.drift;
+        particle.vx += (particle.baseX + driftX - particle.x) * 0.018;
+        particle.vy += (particle.baseY + driftY - particle.y) * 0.018;
+        particle.vx *= 0.88;
+        particle.vy *= 0.88;
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+
+        context.beginPath();
+        context.fillStyle = `rgba(255, 255, 255, ${particle.alpha})`;
+        context.shadowColor = "rgba(255, 255, 255, 0.34)";
+        context.shadowBlur = 10;
+        context.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        context.fill();
+      }
+
+      context.shadowBlur = 0;
+      frameId = window.requestAnimationFrame(draw);
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    window.addEventListener("pointermove", movePointer);
+    window.addEventListener("pointerleave", leavePointer);
+    frameId = window.requestAnimationFrame(draw);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("pointermove", movePointer);
+      window.removeEventListener("pointerleave", leavePointer);
+    };
+  }, []);
+
+  return <canvas className="signal-snow" ref={canvasRef} aria-hidden="true" />;
+}
+
+function LoadingChamber() {
+  const steps = ["Searching signal", "Reading artist image", "Syncing lyrics", "Locking playback"];
+  const [activeStep, setActiveStep] = useState(0);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setActiveStep((step) => (step + 1) % steps.length);
+    }, 720);
+
+    return () => window.clearInterval(timerId);
+  }, [steps.length]);
+
+  return (
+    <div className="signal-loader" role="status" aria-live="polite">
+      <div className="signal-lens">
+        <span className="signal-ring signal-ring-one" />
+        <span className="signal-ring signal-ring-two" />
+        <span className="signal-ring signal-ring-three" />
+        <span className="signal-core" />
+        <span className="signal-sweep" />
+      </div>
+
+      <div className="signal-copy">
+        <p className="eyebrow">Signal chamber</p>
+        <h1>Finding your frequency</h1>
+        <div className="signal-status">
+          {steps.map((step, index) => (
+            <span className={index === activeStep ? "is-active" : ""} key={step}>
+              {step}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IdleSignalRoom({
+  playedAt,
+  onRefresh,
+  onHistory,
+  historyOpen,
+}: {
+  playedAt: string | null;
+  onRefresh: () => void;
+  onHistory: () => void;
+  historyOpen: boolean;
+}) {
+  return (
+    <div className="idle-signal-room">
+      <div className="idle-signal-lens" aria-hidden="true">
+        <span className="idle-signal-ring idle-signal-ring-one" />
+        <span className="idle-signal-ring idle-signal-ring-two" />
+        <span className="idle-signal-core" />
+        <span className="idle-signal-line" />
+      </div>
+
+      <div className="idle-signal-copy">
+        <p className="eyebrow">Standby room</p>
+        <h1>No active signal</h1>
+        <p>
+          {playedAt
+            ? `Playback is quiet. Last pulse was ${timeAgo(playedAt)}.`
+            : "Playback is quiet. Start a track and the room will wake up."}
+        </p>
+      </div>
+
+      <div className="idle-signal-chips" aria-label="Idle status">
+        <span>Spotify ready</span>
+        <span>Snow field active</span>
+        <span>Lyrics sleeping</span>
+      </div>
+
+      <div className="idle-signal-actions">
+        <button className="idle-link" type="button" onClick={onRefresh}>
+          Sync now
+        </button>
+        <button
+          className="idle-link"
+          type="button"
+          onClick={onHistory}
+          aria-expanded={historyOpen}
+        >
+          History
+        </button>
+      </div>
     </div>
   );
 }
@@ -193,22 +411,27 @@ export default function NowPlayingCard() {
   useEffect(() => {
     if (!data?.isPlaying || !progressAnchor) return;
 
-    let timerId = 0;
+    let frameId = 0;
+    let lastUpdate = 0;
 
-    const tick = () => {
-      setLiveProgressMs(
-        clamp(
-          progressAnchor.progressMs + (performance.now() - progressAnchor.receivedAt),
-          0,
-          data.durationMs || progressAnchor.progressMs,
-        ),
-      );
-      timerId = window.setTimeout(tick, 250);
+    const tick = (now: number) => {
+      if (now - lastUpdate > 90) {
+        setLiveProgressMs(
+          clamp(
+            progressAnchor.progressMs + (now - progressAnchor.receivedAt),
+            0,
+            data.durationMs || progressAnchor.progressMs,
+          ),
+        );
+        lastUpdate = now;
+      }
+
+      frameId = window.requestAnimationFrame(tick);
     };
 
-    tick();
+    frameId = window.requestAnimationFrame(tick);
 
-    return () => window.clearTimeout(timerId);
+    return () => window.cancelAnimationFrame(frameId);
   }, [data?.isPlaying, data?.durationMs, data?.title, progressAnchor]);
 
   useEffect(() => {
@@ -388,8 +611,14 @@ export default function NowPlayingCard() {
 
   const activeLyricIndex = useMemo(() => {
     const lines = lyricsData?.lines ?? [];
-    if (!lines.length || !lyricsData?.synced) {
+    if (!lines.length) {
       return 0;
+    }
+
+    if (!lyricsData?.synced) {
+      if (!data?.durationMs) return 0;
+      const progressRatio = clamp(liveProgressMs / data.durationMs, 0, 0.999);
+      return Math.min(lines.length - 1, Math.floor(progressRatio * lines.length));
     }
 
     let activeIndex = 0;
@@ -400,7 +629,7 @@ export default function NowPlayingCard() {
       }
     }
     return activeIndex;
-  }, [liveProgressMs, lyricsData?.lines, lyricsData?.synced]);
+  }, [data?.durationMs, liveProgressMs, lyricsData?.lines, lyricsData?.synced]);
 
   const visibleLyrics = useMemo(() => {
     const lines = lyricsData?.lines ?? [];
@@ -423,12 +652,10 @@ export default function NowPlayingCard() {
 
   if (isLoading) {
     return (
-      <div className="player-stage" style={moodStyle}>
-        <div className="player-shell">
-          <div className="player-card">
-            <div className="player-loading">Loading Spotify...</div>
-          </div>
-        </div>
+      <div className="player-stage loading-stage" style={moodStyle}>
+        <div className="stage-bg-fallback" aria-hidden="true" />
+        <SignalSnow />
+        <LoadingChamber />
       </div>
     );
   }
@@ -436,6 +663,8 @@ export default function NowPlayingCard() {
   if (error || !data) {
     return (
       <div className="player-stage" style={moodStyle}>
+        <div className="stage-bg-fallback" aria-hidden="true" />
+        <SignalSnow />
         <div className="player-shell">
           <div className="player-card">
             <div className="player-error">Couldn&apos;t load Spotify data.</div>
@@ -457,6 +686,7 @@ export default function NowPlayingCard() {
       ) : (
         <div className="stage-bg-fallback" aria-hidden="true" />
       )}
+      <SignalSnow />
 
       <div className="player-column">
         <div className="player-shell">
@@ -507,32 +737,16 @@ export default function NowPlayingCard() {
               </div>
             </div>
 
-            {!hasTrack ? (
-              <div className="empty-state">
-                <div className="idle-orbit">
-                  <div className="idle-disc" />
-                  <span className="idle-ring idle-ring-1" />
-                  <span className="idle-ring idle-ring-2" />
-                </div>
-                <p className="eyebrow">Idle mode</p>
-                <h2>Waiting for Spotify</h2>
-                <p>Start a track and the room will light up with the cover, lyrics, and history.</p>
-                <a className="idle-link" href="/api/spotify/login">
-                  Connect Spotify
-                </a>
-              </div>
+            {!hasTrack || isIdle ? (
+              <IdleSignalRoom
+                playedAt={data.playedAt}
+                onRefresh={refreshPlayback}
+                onHistory={() => setHistoryOpen((open) => !open)}
+                historyOpen={historyOpen}
+              />
             ) : (
               <>
-                {isIdle ? (
-                  <div className="idle-banner">
-                    <span className="idle-dot" />
-                    <span>
-                      Idle mode {data.playedAt ? ` / last played ${timeAgo(data.playedAt)}` : ""}
-                    </span>
-                  </div>
-                ) : null}
-
-                <div className={isIdle ? "art-wrap idle-art" : "art-wrap"}>
+                <div className="art-wrap">
                   <div className={`vinyl ${data.isPlaying ? "spinning" : ""}`} />
                   <div className="album-ring">
                     {data.albumImageUrl ? (
