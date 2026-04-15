@@ -60,6 +60,8 @@ type MoodPalette = {
   three: string;
 };
 
+type TimeMode = "morning" | "day" | "night" | "late";
+
 type SignalParticle = {
   x: number;
   y: number;
@@ -71,6 +73,11 @@ type SignalParticle = {
   alpha: number;
   drift: number;
 };
+
+const SPOTIFY_PROGRESS_LATENCY_MS = 420;
+const SYNCED_LYRIC_LEAD_MS = 320;
+const ESTIMATED_LYRIC_LEAD_MS = 900;
+const PROGRESS_FRAME_MS = 45;
 
 const fetcher = async (url: string): Promise<NowPlayingResponse> => {
   const res = await fetch(url, { cache: "no-store" });
@@ -124,6 +131,21 @@ function makeFallbackPalette(seed: string): MoodPalette {
 function colorFromAverage(r: number, g: number, b: number, alpha: number): string {
   const lift = 34;
   return `rgba(${Math.min(255, r + lift)}, ${Math.min(255, g + lift)}, ${Math.min(255, b + lift)}, ${alpha})`;
+}
+
+function getTimeMode(): TimeMode {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 11) return "morning";
+  if (hour >= 11 && hour < 19) return "day";
+  if (hour >= 19 && hour < 24) return "night";
+  return "late";
+}
+
+function timeModeLabel(mode: TimeMode): string {
+  if (mode === "morning") return "morning signal";
+  if (mode === "day") return "day signal";
+  if (mode === "night") return "night signal";
+  return "deep signal";
 }
 
 function Equalizer({ active }: { active: boolean }) {
@@ -343,6 +365,19 @@ function IdleSignalRoom({
   );
 }
 
+function ArtistWorld({
+  active,
+}: {
+  active: boolean;
+}) {
+  return (
+    <div className={active ? "artist-world is-live" : "artist-world"} aria-hidden="true">
+      <div className="artist-world-orbit artist-world-orbit-one" />
+      <div className="artist-world-orbit artist-world-orbit-two" />
+    </div>
+  );
+}
+
 export default function NowPlayingCard() {
   const { data, error, isLoading, mutate: refreshNowPlaying } = useSWR<NowPlayingResponse>(
     "/api/spotify/now-playing",
@@ -393,6 +428,8 @@ export default function NowPlayingCard() {
   const [moodPalette, setMoodPalette] = useState<MoodPalette>(() =>
     makeFallbackPalette("spotify")
   );
+  const [timeMode, setTimeMode] = useState<TimeMode>("day");
+  const [secretMode, setSecretMode] = useState(false);
 
   const hasTrack = Boolean(data?.title);
   const isIdle = Boolean(data && !data.isPlaying);
@@ -401,9 +438,13 @@ export default function NowPlayingCard() {
 
   useEffect(() => {
     if (!data) return;
-    setLiveProgressMs(data.progressMs);
+    const adjustedProgressMs = data.isPlaying
+      ? clamp(data.progressMs + SPOTIFY_PROGRESS_LATENCY_MS, 0, data.durationMs || data.progressMs)
+      : data.progressMs;
+
+    setLiveProgressMs(adjustedProgressMs);
     setProgressAnchor({
-      progressMs: data.progressMs,
+      progressMs: adjustedProgressMs,
       receivedAt: performance.now(),
     });
   }, [data?.progressMs, data?.title, data?.isPlaying, data]);
@@ -415,7 +456,7 @@ export default function NowPlayingCard() {
     let lastUpdate = 0;
 
     const tick = (now: number) => {
-      if (now - lastUpdate > 90) {
+      if (now - lastUpdate > PROGRESS_FRAME_MS) {
         setLiveProgressMs(
           clamp(
             progressAnchor.progressMs + (now - progressAnchor.receivedAt),
@@ -433,6 +474,35 @@ export default function NowPlayingCard() {
 
     return () => window.cancelAnimationFrame(frameId);
   }, [data?.isPlaying, data?.durationMs, data?.title, progressAnchor]);
+
+  useEffect(() => {
+    setTimeMode(getTimeMode());
+    const timerId = window.setInterval(() => setTimeMode(getTimeMode()), 60_000);
+    return () => window.clearInterval(timerId);
+  }, []);
+
+  useEffect(() => {
+    let buffer = "";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === "input" || tagName === "textarea" || target?.isContentEditable) {
+        return;
+      }
+
+      if (event.key.length !== 1) return;
+      buffer = `${buffer}${event.key.toLowerCase()}`.slice(-8);
+
+      if (buffer === "voteless") {
+        setSecretMode((active) => !active);
+        buffer = "";
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     const fallback = makeFallbackPalette(paletteSeed || "spotify");
@@ -609,6 +679,12 @@ export default function NowPlayingCard() {
     return clamp((liveProgressMs / data.durationMs) * 100, 0, 100);
   }, [liveProgressMs, data?.durationMs]);
 
+  const lyricProgressMs = useMemo(() => {
+    if (!data?.durationMs) return liveProgressMs;
+    const leadMs = lyricsData?.synced ? SYNCED_LYRIC_LEAD_MS : ESTIMATED_LYRIC_LEAD_MS;
+    return clamp(liveProgressMs + leadMs, 0, data.durationMs);
+  }, [data?.durationMs, liveProgressMs, lyricsData?.synced]);
+
   const activeLyricIndex = useMemo(() => {
     const lines = lyricsData?.lines ?? [];
     if (!lines.length) {
@@ -617,19 +693,19 @@ export default function NowPlayingCard() {
 
     if (!lyricsData?.synced) {
       if (!data?.durationMs) return 0;
-      const progressRatio = clamp(liveProgressMs / data.durationMs, 0, 0.999);
+      const progressRatio = clamp(lyricProgressMs / data.durationMs, 0, 0.999);
       return Math.min(lines.length - 1, Math.floor(progressRatio * lines.length));
     }
 
     let activeIndex = 0;
     for (let index = 0; index < lines.length; index += 1) {
       const startTimeMs = lines[index].startTimeMs;
-      if (typeof startTimeMs === "number" && startTimeMs <= liveProgressMs + 650) {
+      if (typeof startTimeMs === "number" && startTimeMs <= lyricProgressMs) {
         activeIndex = index;
       }
     }
     return activeIndex;
-  }, [data?.durationMs, liveProgressMs, lyricsData?.lines, lyricsData?.synced]);
+  }, [data?.durationMs, lyricProgressMs, lyricsData?.lines, lyricsData?.synced]);
 
   const visibleLyrics = useMemo(() => {
     const lines = lyricsData?.lines ?? [];
@@ -649,6 +725,14 @@ export default function NowPlayingCard() {
     "--mood-two": moodPalette.two,
     "--mood-three": moodPalette.three,
   } as CSSProperties;
+  const stageClassName = [
+    "player-stage",
+    lyricsOpen ? "lyrics-open" : "",
+    `time-${timeMode}`,
+    secretMode ? "secret-mode" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   if (isLoading) {
     return (
@@ -676,7 +760,7 @@ export default function NowPlayingCard() {
 
   return (
     <div
-      className={lyricsOpen ? "player-stage lyrics-open" : "player-stage"}
+      className={stageClassName}
       style={moodStyle}
     >
       {backgroundImageUrl ? (
@@ -687,6 +771,9 @@ export default function NowPlayingCard() {
         <div className="stage-bg-fallback" aria-hidden="true" />
       )}
       <SignalSnow />
+      <ArtistWorld
+        active={Boolean(data.isPlaying && hasTrack)}
+      />
 
       <div className="player-column">
         <div className="player-shell">
@@ -822,7 +909,11 @@ export default function NowPlayingCard() {
                   </div>
 
                   <div className="footer-pill">
-                    {data.isFallback ? "Fallback mode" : "Live sync"}
+                    {lyricsData?.synced ? "Timed lyrics" : lyricsData?.lines?.length ? "Estimated lyrics" : "Live sync"}
+                  </div>
+
+                  <div className="footer-pill">
+                    {secretMode ? "Signal override" : timeModeLabel(timeMode)}
                   </div>
 
                   <div className="footer-pill">
@@ -866,12 +957,19 @@ export default function NowPlayingCard() {
             </button>
           </div>
 
-          <div className="settings-block">
-            <h3>Coming soon</h3>
-            <span>Reserved</span>
-          </div>
+          <button
+            className={secretMode ? "settings-toggle is-active" : "settings-toggle"}
+            type="button"
+            onClick={() => setSecretMode((active) => !active)}
+            aria-pressed={secretMode}
+          >
+            <span>
+              <strong>Secret</strong>
+              <small>Purple and green signal mode</small>
+            </span>
+            <i aria-hidden="true" />
+          </button>
 
-          <p className="settings-note">This cog is ready for more controls later.</p>
         </section>
 
         <section
